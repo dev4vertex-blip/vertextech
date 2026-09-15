@@ -8,39 +8,44 @@ datasource db {
 }
 
 model Tenant {
-  id          String             @id @default(uuid()) @db.Uuid
-  slug        String             @unique
-  name        String
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  memberships TenantMembership[]
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String       @unique
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  users     User[]
 
   @@map("tenants")
 }
 
 model User {
-  id          String             @id @default(uuid()) @db.Uuid
-  email       String             @unique
-  displayName String?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  memberships TenantMembership[]
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @db.Uuid
+  email     String
+  phone     String?
+  firstName String
+  lastName  String
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, status])
   @@map("users")
 }
 
-model TenantMembership {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  userId    String   @db.Uuid
-  role      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
 
-  @@unique([tenantId, userId])
-  @@index([tenantId])
-  @@index([userId])
-  @@map("tenant_memberships")
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  ARCHIVED
 }
