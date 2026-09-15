@@ -5,6 +5,7 @@ import {
   RequestMethod,
 } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { DatabaseModule } from "@vertex/database";
 
 import { TenantContextMiddleware } from "./common/tenant/tenant-context.middleware.js";
 import { appConfig } from "./config/app-config.js";
@@ -22,6 +23,7 @@ import { validateEnvironment } from "./config/environment.validation.js";
       validate: validateEnvironment,
     }),
     AppConfigModule,
+    DatabaseModule,
     HealthModule,
   ],
 })

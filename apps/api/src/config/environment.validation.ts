@@ -12,6 +12,9 @@ export function validateEnvironment(
     LOG_LEVEL: Joi.string()
       .valid("debug", "info", "warn", "error")
       .default("info"),
+    DATABASE_URL: Joi.string()
+      .uri({ scheme: ["postgresql", "postgres"] })
+      .required(),
   }).unknown(true);
 
   const { error, value } = schema.validate(environment, {

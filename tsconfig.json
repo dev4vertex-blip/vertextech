@@ -19,7 +19,7 @@
     "paths": {
       "@vertex/ui": ["packages/ui/src"],
       "@vertex/auth": ["packages/auth/src"],
-      "@vertex/database": ["packages/database/src"],
+      "@vertex/database": ["packages/database/dist"],
       "@vertex/config": ["packages/config/src"],
       "@vertex/types": ["packages/types/src"],
       "@vertex/validation": ["packages/validation/src"],
