@@ -15,26 +15,95 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
   users     User[]
+  roles     UserRole[]
 
   @@map("tenants")
 }
 
 model User {
   id        String     @id @default(uuid()) @db.Uuid
-  tenantId  String     @db.Uuid
+  tenantId  String?    @db.Uuid
   email     String
   phone     String?
   firstName String
   lastName  String
   status    UserStatus @default(ACTIVE)
+  domain    UserDomain @default(CUSTOMER)
+  passwordHash String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roles     UserRole[]
+  refreshTokens RefreshToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([email])
   @@map("users")
+}
+
+model Role {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  scope       RoleScope
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@unique([scope, name])
+  @@map("roles")
+}
+
+model Permission {
+  id          String       @id @default(uuid()) @db.Uuid
+  key         String       @unique
+  description String?
+  createdAt   DateTime     @default(now())
+  roleLinks   RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  tenantId  String?  @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, tenantId])
+  @@index([tenantId, userId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 enum TenantStatus {
@@ -48,4 +117,14 @@ enum UserStatus {
   INVITED
   SUSPENDED
   ARCHIVED
+}
+
+enum UserDomain {
+  INTERNAL
+  CUSTOMER
+}
+
+enum RoleScope {
+  INTERNAL
+  TENANT
 }

@@ -12,6 +12,7 @@ import { appConfig } from "./config/app-config.js";
 import { AppConfigModule } from "./config/config.module.js";
 import { HealthModule } from "./health/health.module.js";
 import { validateEnvironment } from "./config/environment.validation.js";
+import { AuthModule } from "./modules/auth/auth.module.js";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { validateEnvironment } from "./config/environment.validation.js";
     }),
     AppConfigModule,
     DatabaseModule,
+    AuthModule,
     HealthModule,
   ],
 })

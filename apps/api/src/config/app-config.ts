@@ -8,6 +8,10 @@ export interface AppConfigValues {
   port: number;
   corsOrigins: string[] | "*";
   logLevel: LogLevel;
+  jwtAccessSecret: string;
+  jwtRefreshSecret: string;
+  jwtAccessExpiresIn: string;
+  jwtRefreshExpiresIn: string;
 }
 
 export const appConfig = registerAs("app", (): AppConfigValues => ({
@@ -15,6 +19,10 @@ export const appConfig = registerAs("app", (): AppConfigValues => ({
   port: Number(process.env.PORT ?? 3000),
   corsOrigins: parseCorsOrigins(process.env.CORS_ORIGIN),
   logLevel: parseLogLevel(process.env.LOG_LEVEL),
+  jwtAccessSecret: process.env.JWT_ACCESS_SECRET ?? "",
+  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? "",
+  jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? "15m",
+  jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? "7d",
 }));
 
 @Injectable()
@@ -33,6 +41,22 @@ export class AppConfig {
 
   get logLevel(): LogLevel {
     return appConfig().logLevel;
+  }
+
+  get jwtAccessSecret(): string {
+    return appConfig().jwtAccessSecret;
+  }
+
+  get jwtRefreshSecret(): string {
+    return appConfig().jwtRefreshSecret;
+  }
+
+  get jwtAccessExpiresIn(): string {
+    return appConfig().jwtAccessExpiresIn;
+  }
+
+  get jwtRefreshExpiresIn(): string {
+    return appConfig().jwtRefreshExpiresIn;
   }
 }
 
