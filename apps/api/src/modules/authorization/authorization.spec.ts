@@ -78,7 +78,7 @@ test("authorization guard enforces roles and permissions", () => {
   );
 });
 
-test("tenant context guard derives context from the authenticated identity", () => {
+test("tenant context guard derives context from the authenticated identity", async () => {
   const request = {
     tenantId: "untrusted-header",
     user: {
@@ -89,7 +89,12 @@ test("tenant context guard derives context from the authenticated identity", () 
       permissions: [],
     },
   };
-  assert.equal(new TenantContextGuard().canActivate(context(request)), true);
+  assert.equal(
+    await new TenantContextGuard({
+      tenant: { findUnique: async () => ({ status: "ACTIVE" }) },
+    } as never).canActivate(context(request)),
+    true,
+  );
   assert.equal(request.tenantId, "tenant-a");
 });
 

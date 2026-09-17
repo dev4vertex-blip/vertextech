@@ -25,6 +25,63 @@ test("customer profile is constrained by authenticated user and tenant", async (
             },
           },
         });
+
+        test("dashboard and team summary use only the authenticated tenant", async () => {
+          const service = new CustomerService({
+            tenant: {
+              findFirstOrThrow: async (args: unknown) => {
+                assert.deepEqual(args.where, {
+                  id: "tenant-a",
+                  status: "ACTIVE",
+                  users: { some: { id: "user-a" } },
+                });
+                return { id: "tenant-a", _count: { users: 2 } };
+              },
+            },
+            user: {
+              groupBy: async (args: unknown) => {
+                assert.deepEqual(args, {
+                  by: ["status"],
+                  where: { tenantId: "tenant-a", domain: "CUSTOMER" },
+                  _count: { _all: true },
+                });
+                return [
+                  { status: "ACTIVE", _count: { _all: 1 } },
+                  { status: "SUSPENDED", _count: { _all: 1 } },
+                ];
+              },
+            },
+          } as never);
+          await service.dashboard("user-a", "tenant-a");
+          assert.deepEqual(await service.teamSummary("tenant-a"), {
+            totalUsers: 2,
+            activeUsers: 1,
+            inactiveUsers: 1,
+          });
+        });
+
+        test("business and settings queries are tenant-scoped", async () => {
+          const service = new CustomerService({
+            tenant: {
+              findUniqueOrThrow: async (args: unknown) => {
+                assert.deepEqual(args.where, { id: "tenant-a" });
+                return { id: "tenant-a" };
+              },
+            },
+            tenantSettings: {
+              upsert: async (args: unknown) => {
+                assert.deepEqual(args.where, { tenantId: "tenant-a" });
+                return { tenantId: "tenant-a" };
+              },
+            },
+          } as never);
+          assert.deepEqual(await service.business("tenant-a"), {
+            id: "tenant-a",
+          });
+          assert.deepEqual(await service.settings("tenant-a"), {
+            tenantId: "tenant-a",
+          });
+        });
         return { id: "user-a", tenantId: "tenant-a" };
       },
     },

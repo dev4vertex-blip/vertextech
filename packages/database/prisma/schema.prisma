@@ -8,16 +8,45 @@ datasource db {
 }
 
 model Tenant {
-  id        String       @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String       @unique
-  status    TenantStatus @default(ACTIVE)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  users     User[]
-  roles     UserRole[]
+  id            String          @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String          @unique
+  businessEmail String?
+  businessPhone String?
+  website       String?
+  industry      String?
+  address       String?
+  city          String?
+  state         String?
+  country       String?
+  postalCode    String?
+  timezone      String?
+  currency      String?
+  logoReference String?
+  status        TenantStatus    @default(ACTIVE)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  users         User[]
+  roles         UserRole[]
+  settings      TenantSettings?
 
   @@map("tenants")
+}
+
+model TenantSettings {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @unique @db.Uuid
+  timezone                String?
+  currency                String?
+  dateFormat              String?
+  language                String?
+  notificationPreferences Json     @default("{}")
+  businessSettings        Json     @default("{}")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_settings")
 }
 
 model User {

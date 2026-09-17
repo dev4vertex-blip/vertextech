@@ -65,6 +65,40 @@ The customer dashboard foundation is represented by the authenticated
 `/api/customer/profile` endpoint. It is intentionally limited to identity and
 tenant context; business modules are not part of this phase.
 
+## Customer dashboard and tenant settings
+
+- `GET /api/customer/dashboard` returns the authenticated tenant workspace
+  summary and real team count.
+- `GET /api/customer/business` reads the current tenant business profile.
+- `PATCH /api/customer/business` updates business profile fields and validates
+  slug uniqueness.
+- `GET /api/customer/settings` reads the current tenant's settings.
+- `PATCH /api/customer/settings` updates tenant-specific settings.
+- `GET /api/customer/team/summary` returns total, active, and inactive customer
+  user counts.
+
+Business and settings access is permission-based. OWNER and ADMIN can update
+business/settings, MANAGER has read-only business/settings access, and STAFF
+receives only permissions explicitly assigned to it. All queries use the
+authenticated tenant context; no request tenant ID is accepted.
+
+## Customer dashboard sections
+
+After customer login, the dashboard foundation maps to these sections:
+
+- **Business Overview** — `GET /api/customer/dashboard`; returns the current
+  tenant identity, status, authenticated user, role, and real team count.
+- **Business Profile** — `GET/PATCH /api/customer/business`; reads and updates
+  the authenticated tenant's business information.
+- **Users & Team** — `GET /api/customer/team/summary`; returns total, active,
+  and inactive customer-user counts. Full user management is a later phase.
+- **Tenant Settings** — `GET/PATCH /api/customer/settings`; manages the
+  authenticated tenant's settings.
+- **Security** — existing `GET /api/auth/me`, `POST /api/auth/logout`, and
+  refresh-token revocation provide the current security foundation.
+- **Activity Summary** — not implemented yet because the project does not have
+  an audit/activity event store. No invented activity statistics are returned.
+
 In development, registration returns a `developmentVerificationToken` so the
 flow can be tested without a third-party provider. Production delivery is
 represented by the `VerificationProvider` abstraction and must be replaced by

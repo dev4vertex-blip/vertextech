@@ -26,6 +26,12 @@ const permissionKeys = [
   "users.update",
   "users.delete",
   "crm.leads.read",
+  "dashboard.read",
+  "business.read",
+  "business.update",
+  "settings.read",
+  "settings.update",
+  "team.summary.read",
 ];
 const roleDefinitions = [
   ...internalRoles.map((role) => ({ ...role, scope: RoleScope.INTERNAL })),
@@ -93,71 +99,82 @@ async function main(): Promise<void> {
         `Seeded role is missing: ${definition.scope}:${definition.name}`,
       );
     }
-    if (
-      definition.name === "SUPER_ADMIN" ||
+    const rolePermissionNames =
+      definition.scope === RoleScope.INTERNAL ||
       definition.name === "OWNER" ||
       definition.name === "ADMIN"
-    ) {
-      for (const permissionId of permissions.values()) {
-        await prisma.rolePermission.upsert({
-          where: {
-            roleId_permissionId: { roleId, permissionId },
-          },
-          update: {},
-          create: { roleId, permissionId },
-        });
+        ? permissionKeys
+        : definition.name === "MANAGER"
+          ? [
+              "dashboard.read",
+              "business.read",
+              "settings.read",
+              "team.summary.read",
+            ]
+          : definition.name === "STAFF"
+            ? ["dashboard.read"]
+            : [];
+    for (const permissionKey of rolePermissionNames) {
+      const permissionId = permissions.get(permissionKey);
+      if (!permissionId) {
+        throw new Error(`Permission is missing: ${permissionKey}`);
       }
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId, permissionId } },
+        update: {},
+        create: { roleId, permissionId },
+      });
     }
+  }
 
-    const tenant = await prisma.tenant.upsert({
-      where: { slug: "tenant-a" },
-      update: { name: "Tenant A" },
-      create: { name: "Tenant A", slug: "tenant-a" },
-    });
-    const user = await prisma.user.findFirst({
-      where: { tenantId: tenant.id, email: "user.a@tenant-a.example" },
-    });
-    const tenantUser =
-      user ??
-      (await prisma.user.create({
-        data: {
-          tenantId: tenant.id,
-          email: "user.a@tenant-a.example",
-          firstName: "User",
-          lastName: "A",
-        },
-      }));
-    const crmViewerRoleId = roles.get(`${RoleScope.TENANT}:CRM_VIEWER`);
-    const crmPermissionId = permissions.get("crm.leads.read");
-    if (!crmViewerRoleId || !crmPermissionId) {
-      throw new Error("CRM example role or permission was not seeded");
-    }
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: {
-          roleId: crmViewerRoleId,
-          permissionId: crmPermissionId,
-        },
+  const tenant = await prisma.tenant.upsert({
+    where: { slug: "tenant-a" },
+    update: { name: "Tenant A" },
+    create: { name: "Tenant A", slug: "tenant-a" },
+  });
+  const user = await prisma.user.findFirst({
+    where: { tenantId: tenant.id, email: "user.a@tenant-a.example" },
+  });
+  const tenantUser =
+    user ??
+    (await prisma.user.create({
+      data: {
+        tenantId: tenant.id,
+        email: "user.a@tenant-a.example",
+        firstName: "User",
+        lastName: "A",
       },
-      update: {},
-      create: { roleId: crmViewerRoleId, permissionId: crmPermissionId },
-    });
-    await prisma.userRole.upsert({
-      where: {
-        userId_roleId_tenantId: {
-          userId: tenantUser.id,
-          roleId: crmViewerRoleId,
-          tenantId: tenant.id,
-        },
+    }));
+  const crmViewerRoleId = roles.get(`${RoleScope.TENANT}:CRM_VIEWER`);
+  const crmPermissionId = permissions.get("crm.leads.read");
+  if (!crmViewerRoleId || !crmPermissionId) {
+    throw new Error("CRM example role or permission was not seeded");
+  }
+  await prisma.rolePermission.upsert({
+    where: {
+      roleId_permissionId: {
+        roleId: crmViewerRoleId,
+        permissionId: crmPermissionId,
       },
-      update: {},
-      create: {
+    },
+    update: {},
+    create: { roleId: crmViewerRoleId, permissionId: crmPermissionId },
+  });
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId_tenantId: {
         userId: tenantUser.id,
         roleId: crmViewerRoleId,
         tenantId: tenant.id,
       },
-    });
-  }
+    },
+    update: {},
+    create: {
+      userId: tenantUser.id,
+      roleId: crmViewerRoleId,
+      tenantId: tenant.id,
+    },
+  });
 }
 
 main()
