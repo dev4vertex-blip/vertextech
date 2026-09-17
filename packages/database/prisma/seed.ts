@@ -3,22 +3,33 @@ import { PrismaClient, RoleScope } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const internalRoles = [
-  "SUPER_ADMIN",
-  "ADMIN",
-  "IT",
-  "SALES",
-  "OPERATIONS",
-  "HR",
-  "FINANCE",
-  "SUPPORT",
-  "DEVELOPMENT",
+  { name: "SUPER_ADMIN", description: "Highest platform-level authority" },
+  { name: "ADMIN", description: "Vertex internal administration" },
+  { name: "IT", description: "Vertex information technology" },
+  { name: "SALES", description: "Vertex sales operations" },
+  { name: "HR", description: "Vertex human resources" },
+  { name: "SUPPORT", description: "Vertex customer and platform support" },
+  { name: "FINANCE", description: "Vertex finance operations" },
+  { name: "OPERATIONS", description: "Vertex business operations" },
+  { name: "DEVELOPMENT", description: "Vertex product development" },
 ];
-const tenantRoles = ["OWNER", "ADMIN", "MANAGER", "STAFF"];
+const tenantRoles = [
+  { name: "OWNER", description: "Highest authority within a customer tenant" },
+  { name: "ADMIN", description: "Customer tenant administration" },
+  { name: "MANAGER", description: "Customer tenant team management" },
+  { name: "STAFF", description: "Customer tenant operational user" },
+  { name: "CRM_VIEWER", description: "Read-only CRM access for a tenant user" },
+];
 const permissionKeys = [
   "users.read",
   "users.create",
   "users.update",
   "users.delete",
+  "crm.leads.read",
+];
+const roleDefinitions = [
+  ...internalRoles.map((role) => ({ ...role, scope: RoleScope.INTERNAL })),
+  ...tenantRoles.map((role) => ({ ...role, scope: RoleScope.TENANT })),
 ];
 
 async function main(): Promise<void> {
@@ -32,27 +43,120 @@ async function main(): Promise<void> {
     permissions.set(key, permission.id);
   }
 
-  for (const name of [...internalRoles, ...tenantRoles]) {
-    const scope = internalRoles.includes(name)
-      ? RoleScope.INTERNAL
-      : RoleScope.TENANT;
+  const roles = new Map<string, string>();
+  for (const definition of roleDefinitions) {
     const role = await prisma.role.upsert({
-      where: { scope_name: { scope, name } },
-      update: {},
-      create: { name, scope },
+      where: {
+        scope_name: { scope: definition.scope, name: definition.name },
+      },
+      update: { description: definition.description },
+      create: {
+        name: definition.name,
+        description: definition.description,
+        scope: definition.scope,
+      },
     });
+    roles.set(`${definition.scope}:${definition.name}`, role.id);
+  }
 
-    if (name === "SUPER_ADMIN" || name === "OWNER" || name === "ADMIN") {
+  const hierarchy = [
+    ...internalRoles
+      .filter(({ name }) => name !== "SUPER_ADMIN")
+      .map(({ name }) => ({
+        scope: RoleScope.INTERNAL,
+        name,
+        parentName: "SUPER_ADMIN",
+      })),
+    ...tenantRoles
+      .filter(({ name }) => name !== "OWNER")
+      .map(({ name }) => ({
+        scope: RoleScope.TENANT,
+        name,
+        parentName: "OWNER",
+      })),
+  ];
+  for (const relation of hierarchy) {
+    await prisma.role.update({
+      where: {
+        scope_name: { scope: relation.scope, name: relation.name },
+      },
+      data: {
+        parentRoleId: roles.get(`${relation.scope}:${relation.parentName}`),
+      },
+    });
+  }
+
+  for (const definition of roleDefinitions) {
+    const roleId = roles.get(`${definition.scope}:${definition.name}`);
+    if (!roleId) {
+      throw new Error(
+        `Seeded role is missing: ${definition.scope}:${definition.name}`,
+      );
+    }
+    if (
+      definition.name === "SUPER_ADMIN" ||
+      definition.name === "OWNER" ||
+      definition.name === "ADMIN"
+    ) {
       for (const permissionId of permissions.values()) {
         await prisma.rolePermission.upsert({
           where: {
-            roleId_permissionId: { roleId: role.id, permissionId },
+            roleId_permissionId: { roleId, permissionId },
           },
           update: {},
-          create: { roleId: role.id, permissionId },
+          create: { roleId, permissionId },
         });
       }
     }
+
+    const tenant = await prisma.tenant.upsert({
+      where: { slug: "tenant-a" },
+      update: { name: "Tenant A" },
+      create: { name: "Tenant A", slug: "tenant-a" },
+    });
+    const user = await prisma.user.findFirst({
+      where: { tenantId: tenant.id, email: "user.a@tenant-a.example" },
+    });
+    const tenantUser =
+      user ??
+      (await prisma.user.create({
+        data: {
+          tenantId: tenant.id,
+          email: "user.a@tenant-a.example",
+          firstName: "User",
+          lastName: "A",
+        },
+      }));
+    const crmViewerRoleId = roles.get(`${RoleScope.TENANT}:CRM_VIEWER`);
+    const crmPermissionId = permissions.get("crm.leads.read");
+    if (!crmViewerRoleId || !crmPermissionId) {
+      throw new Error("CRM example role or permission was not seeded");
+    }
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: crmViewerRoleId,
+          permissionId: crmPermissionId,
+        },
+      },
+      update: {},
+      create: { roleId: crmViewerRoleId, permissionId: crmPermissionId },
+    });
+    await prisma.userRole.upsert({
+      where: {
+        userId_roleId_tenantId: {
+          userId: tenantUser.id,
+          roleId: crmViewerRoleId,
+          tenantId: tenant.id,
+        },
+      },
+      update: {},
+      create: {
+        userId: tenantUser.id,
+        roleId: crmViewerRoleId,
+        tenantId: tenant.id,
+      },
+    });
   }
 }
 

@@ -19,6 +19,7 @@ export function validateEnvironment(
     JWT_REFRESH_SECRET: Joi.string().min(32).required(),
     JWT_ACCESS_EXPIRES_IN: Joi.string().default("15m"),
     JWT_REFRESH_EXPIRES_IN: Joi.string().default("7d"),
+    VERIFICATION_TOKEN_EXPIRES_IN: Joi.string().default("24h"),
   }).unknown(true);
 
   const { error, value } = schema.validate(environment, {

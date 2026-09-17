@@ -21,22 +21,26 @@ model Tenant {
 }
 
 model User {
-  id        String     @id @default(uuid()) @db.Uuid
-  tenantId  String?    @db.Uuid
-  email     String
-  phone     String?
-  firstName String
-  lastName  String
-  status    UserStatus @default(ACTIVE)
-  domain    UserDomain @default(CUSTOMER)
-  passwordHash String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  tenant    Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  roles     UserRole[]
-  refreshTokens RefreshToken[]
+  id                 String              @id @default(uuid()) @db.Uuid
+  tenantId           String?             @db.Uuid
+  email              String
+  phone              String?
+  firstName          String
+  lastName           String
+  status             UserStatus          @default(ACTIVE)
+  domain             UserDomain          @default(CUSTOMER)
+  passwordHash       String?
+  emailVerifiedAt    DateTime?
+  phoneVerifiedAt    DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roles              UserRole[]
+  refreshTokens      RefreshToken[]
+  verificationTokens VerificationToken[]
 
   @@unique([tenantId, email])
+  @@unique([tenantId, phone])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([email])
@@ -44,24 +48,28 @@ model User {
 }
 
 model Role {
-  id          String       @id @default(uuid()) @db.Uuid
-  name        String
-  description String?
-  scope       RoleScope
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  users       UserRole[]
-  permissions RolePermission[]
+  id           String           @id @default(uuid()) @db.Uuid
+  name         String
+  description  String?
+  scope        RoleScope
+  parentRoleId String?          @db.Uuid
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  users        UserRole[]
+  permissions  RolePermission[]
+  parentRole   Role?            @relation("RoleHierarchy", fields: [parentRoleId], references: [id], onDelete: Restrict)
+  childRoles   Role[]           @relation("RoleHierarchy")
 
   @@unique([scope, name])
+  @@index([parentRoleId])
   @@map("roles")
 }
 
 model Permission {
-  id          String       @id @default(uuid()) @db.Uuid
-  key         String       @unique
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
   description String?
-  createdAt   DateTime     @default(now())
+  createdAt   DateTime         @default(now())
   roleLinks   RolePermission[]
 
   @@map("permissions")
@@ -106,6 +114,21 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+model VerificationToken {
+  id         String              @id @default(uuid()) @db.Uuid
+  userId     String              @db.Uuid
+  tokenHash  String              @unique
+  purpose    VerificationPurpose
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime            @default(now())
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, consumedAt])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
 enum TenantStatus {
   ACTIVE
   SUSPENDED
@@ -127,4 +150,9 @@ enum UserDomain {
 enum RoleScope {
   INTERNAL
   TENANT
+}
+
+enum VerificationPurpose {
+  EMAIL
+  PHONE
 }

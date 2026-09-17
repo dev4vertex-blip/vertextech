@@ -4,12 +4,18 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { PrismaService } from "@vertex/database";
+import { createHash, randomBytes } from "node:crypto";
 
 import { AppConfig } from "../../config/app-config.js";
 import { AuthenticatedUser } from "../authorization/authorization.types.js";
-import { LoginDto, RefreshTokenDto, RegisterDto } from "./dto.js";
+import { LoginDto, RegisterDto } from "./dto.js";
 import { PasswordHasherService } from "./password-hasher.service.js";
 import { TokenService } from "./token.service.js";
+import {
+  VERIFICATION_PROVIDER,
+  VerificationProvider,
+} from "./verification.provider.js";
+import { Inject } from "@nestjs/common";
 
 @Injectable()
 export class AuthService {
@@ -18,54 +24,112 @@ export class AuthService {
     private readonly hasher: PasswordHasherService,
     private readonly tokens: TokenService,
     private readonly config: AppConfig,
+    @Inject(VERIFICATION_PROVIDER)
+    private readonly verificationProvider: VerificationProvider,
   ) {}
 
   async register(dto: RegisterDto) {
+    const slug = normalizeSlug(dto.tenantSlug);
+    const email = dto.email.trim().toLowerCase();
     const passwordHash = await this.hasher.hash(dto.password);
+    const verification = createVerificationToken();
     try {
-      const user = await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const tenant = await tx.tenant.create({
-          data: { name: dto.tenantName, slug: dto.tenantSlug },
+          data: { name: dto.tenantName.trim(), slug },
         });
         const ownerRole = await tx.role.findUniqueOrThrow({
           where: { scope_name: { scope: "TENANT", name: "OWNER" } },
         });
-        const created = await tx.user.create({
+        const user = await tx.user.create({
           data: {
             tenantId: tenant.id,
-            email: dto.email.toLowerCase(),
-            firstName: dto.firstName,
-            lastName: dto.lastName,
+            email,
+            phone: dto.phone,
+            firstName: dto.firstName.trim(),
+            lastName: dto.lastName.trim(),
             passwordHash,
+            status: "INVITED",
           },
         });
         await tx.userRole.create({
+          data: { userId: user.id, roleId: ownerRole.id, tenantId: tenant.id },
+        });
+        await tx.verificationToken.create({
           data: {
-            userId: created.id,
-            roleId: ownerRole.id,
-            tenantId: tenant.id,
+            userId: user.id,
+            tokenHash: hashVerificationToken(verification.value),
+            purpose: "EMAIL",
+            expiresAt: new Date(
+              Date.now() +
+                parseDuration(this.config.verificationTokenExpiresIn),
+            ),
           },
         });
-        return created;
+        return { tenant, user };
       });
-      return this.issueTokens(user.id);
+      await this.verificationProvider.sendEmailVerification({
+        email,
+        token: verification.value,
+      });
+      return {
+        userId: result.user.id,
+        tenantId: result.tenant.id,
+        status: "PENDING_EMAIL_VERIFICATION",
+        ...(this.config.nodeEnv === "development"
+          ? { developmentVerificationToken: verification.value }
+          : {}),
+      };
     } catch (error) {
       if (
         error instanceof Error &&
         error.message.includes("Unique constraint")
       ) {
-        throw new ConflictException("Tenant or user already exists");
+        throw new ConflictException("Email or business slug already exists");
       }
       throw error;
     }
   }
 
-  async login(dto: LoginDto) {
-    const user = await this.prisma.user.findFirst({
-      where: { email: dto.email.toLowerCase(), tenantId: dto.tenantId },
+  async verifyEmail(token: string) {
+    const record = await this.prisma.verificationToken.findFirst({
+      where: {
+        tokenHash: hashVerificationToken(token),
+        purpose: "EMAIL",
+        consumedAt: null,
+      },
     });
+    if (!record || record.expiresAt <= new Date()) {
+      throw new UnauthorizedException("Invalid or expired verification token");
+    }
+    await this.prisma.$transaction([
+      this.prisma.verificationToken.update({
+        where: { id: record.id },
+        data: { consumedAt: new Date() },
+      }),
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { emailVerifiedAt: new Date(), status: "ACTIVE" },
+      }),
+    ]);
+    return { verified: true };
+  }
+
+  async login(dto: LoginDto) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: dto.email.trim().toLowerCase(),
+        ...(dto.tenantSlug
+          ? { tenant: { is: { slug: dto.tenantSlug.trim().toLowerCase() } } }
+          : {}),
+      },
+    });
+    const user = users.length === 1 ? users[0] : null;
     if (
       !user?.passwordHash ||
+      user.status !== "ACTIVE" ||
+      (user.domain === "CUSTOMER" && !dto.tenantSlug) ||
+      (user.domain === "CUSTOMER" && !user.emailVerifiedAt) ||
       !(await this.hasher.verify(user.passwordHash, dto.password))
     ) {
       throw new UnauthorizedException("Invalid credentials");
@@ -73,9 +137,9 @@ export class AuthService {
     return this.issueTokens(user.id);
   }
 
-  async refresh(dto: RefreshTokenDto) {
+  async refresh(refreshToken: string) {
     const record = await this.prisma.refreshToken.findFirst({
-      where: { tokenHash: this.tokens.hash(dto.refreshToken), revokedAt: null },
+      where: { tokenHash: this.tokens.hash(refreshToken), revokedAt: null },
     });
     if (!record || record.expiresAt <= new Date()) {
       throw new UnauthorizedException("Invalid or expired refresh token");
@@ -108,11 +172,11 @@ export class AuthService {
         domain: true,
         createdAt: true,
         updatedAt: true,
+        tenant: { select: { id: true, name: true, slug: true, status: true } },
         roles: {
-          include: {
-            role: {
-              include: { permissions: { include: { permission: true } } },
-            },
+          select: {
+            tenantId: true,
+            role: { select: { name: true, scope: true } },
           },
         },
       },
@@ -120,10 +184,15 @@ export class AuthService {
   }
 
   private async issueTokens(userId: string) {
+    const identity = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { tenantId: true },
+    });
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       include: {
         roles: {
+          where: { tenantId: identity.tenantId },
           include: {
             role: {
               include: { permissions: { include: { permission: true } } },
@@ -150,7 +219,9 @@ export class AuthService {
       data: {
         userId: user.id,
         tokenHash: refresh.hash,
-        expiresAt: new Date(Date.now() + this.refreshLifetimeMs()),
+        expiresAt: new Date(
+          Date.now() + parseDuration(this.config.jwtRefreshExpiresIn),
+        ),
       },
     });
     return {
@@ -159,11 +230,31 @@ export class AuthService {
       user: authUser,
     };
   }
+}
 
-  private refreshLifetimeMs(): number {
-    const match = /^(\d+)([smhd])$/.exec(this.config.jwtRefreshExpiresIn);
-    if (!match) return 7 * 24 * 60 * 60 * 1000;
-    const units = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
-    return Number(match[1]) * units[match[2] as keyof typeof units];
+function normalizeSlug(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug || slug.length > 100) {
+    throw new ConflictException("Business slug is invalid");
   }
+  return slug;
+}
+
+function createVerificationToken(): { value: string } {
+  return { value: randomBytes(32).toString("base64url") };
+}
+
+function hashVerificationToken(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function parseDuration(value: string): number {
+  const match = /^(\d+)([smhd])$/.exec(value);
+  if (!match) return 24 * 60 * 60 * 1000;
+  const units = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+  return Number(match[1]) * units[match[2] as keyof typeof units];
 }

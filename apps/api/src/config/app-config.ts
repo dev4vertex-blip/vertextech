@@ -12,6 +12,7 @@ export interface AppConfigValues {
   jwtRefreshSecret: string;
   jwtAccessExpiresIn: string;
   jwtRefreshExpiresIn: string;
+  verificationTokenExpiresIn: string;
 }
 
 export const appConfig = registerAs("app", (): AppConfigValues => ({
@@ -23,6 +24,8 @@ export const appConfig = registerAs("app", (): AppConfigValues => ({
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? "",
   jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? "15m",
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? "7d",
+  verificationTokenExpiresIn:
+    process.env.VERIFICATION_TOKEN_EXPIRES_IN ?? "24h",
 }));
 
 @Injectable()
@@ -57,6 +60,10 @@ export class AppConfig {
 
   get jwtRefreshExpiresIn(): string {
     return appConfig().jwtRefreshExpiresIn;
+  }
+
+  get verificationTokenExpiresIn(): string {
+    return appConfig().verificationTokenExpiresIn;
   }
 }
 
