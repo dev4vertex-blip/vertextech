@@ -244,3 +244,48 @@ test("registration transaction errors do not issue a verification response", asy
     /role assignment failed/,
   );
 });
+
+test("invitation acceptance creates the invited tenant user and role atomically", async () => {
+  let accepted = false;
+  const service = new AuthService(
+    {
+      invitation: {
+        findFirst: async () => ({
+          id: "invitation-a",
+          tenantId: "tenant-a",
+          invitedEmail: "staff@example.com",
+          firstName: "Staff",
+          lastName: "User",
+          roleId: "role-staff",
+          expiresAt: new Date(Date.now() + 60_000),
+          role: { name: "STAFF", scope: "TENANT" },
+        }),
+      },
+      user: { findFirst: async () => null },
+      $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
+        callback({
+          user: {
+            create: async () => ({
+              id: "user-staff",
+              tenantId: "tenant-a",
+            }),
+          },
+          userRole: { create: async () => undefined },
+          invitation: {
+            update: async () => {
+              accepted = true;
+            },
+          },
+        }),
+    } as never,
+    { hash: async () => "password-hash" } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  assert.deepEqual(
+    await service.acceptInvitation("a".repeat(32), "password123"),
+    { userId: "user-staff", tenantId: "tenant-a", role: "STAFF" },
+  );
+  assert.equal(accepted, true);
+});

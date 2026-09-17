@@ -32,6 +32,7 @@ const permissionKeys = [
   "settings.read",
   "settings.update",
   "team.summary.read",
+  "team.manage",
 ];
 const roleDefinitions = [
   ...internalRoles.map((role) => ({ ...role, scope: RoleScope.INTERNAL })),

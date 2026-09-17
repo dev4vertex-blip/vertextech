@@ -102,6 +102,7 @@ export class AuthService {
     if (!record || record.expiresAt <= new Date()) {
       throw new UnauthorizedException("Invalid or expired verification token");
     }
+
     await this.prisma.$transaction([
       this.prisma.verificationToken.update({
         where: { id: record.id },
@@ -113,6 +114,62 @@ export class AuthService {
       }),
     ]);
     return { verified: true };
+  }
+
+  async acceptInvitation(token: string, password: string) {
+    const invitation = await this.prisma.invitation.findFirst({
+      where: {
+        tokenHash: hashVerificationToken(token),
+        acceptedAt: null,
+        revokedAt: null,
+      },
+      include: { role: true },
+    });
+    if (
+      !invitation ||
+      invitation.expiresAt <= new Date() ||
+      invitation.role.scope !== "TENANT"
+    ) {
+      throw new UnauthorizedException("Invalid or expired invitation");
+    }
+    const existing = await this.prisma.user.findFirst({
+      where: { email: invitation.invitedEmail },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException("This invitation cannot be accepted");
+    }
+    const passwordHash = await this.hasher.hash(password);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          tenantId: invitation.tenantId,
+          email: invitation.invitedEmail,
+          firstName: invitation.firstName,
+          lastName: invitation.lastName,
+          passwordHash,
+          emailVerifiedAt: new Date(),
+          status: "ACTIVE",
+        },
+      });
+      await tx.userRole.create({
+        data: {
+          userId: user.id,
+          roleId: invitation.roleId,
+          tenantId: invitation.tenantId,
+        },
+      });
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: { acceptedAt: new Date() },
+      });
+      return user;
+    });
+    return {
+      userId: result.id,
+      tenantId: result.tenantId,
+      role: invitation.role.name,
+    };
   }
 
   async login(dto: LoginDto) {

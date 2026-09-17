@@ -56,3 +56,12 @@ export class VerifyEmailDto {
   @MinLength(32)
   token!: string;
 }
+
+export class AcceptInvitationDto {
+  @IsString()
+  @MinLength(32)
+  token!: string;
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}

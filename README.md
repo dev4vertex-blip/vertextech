@@ -99,6 +99,26 @@ After customer login, the dashboard foundation maps to these sections:
 - **Activity Summary** — not implemented yet because the project does not have
   an audit/activity event store. No invented activity statistics are returned.
 
+  ## Customer team management
+  - `GET /api/customer/team` lists only the authenticated tenant's customer
+    users with pagination, status/role filters, and search.
+  - `GET /api/customer/team/:userId` reads one tenant-scoped team member.
+  - `POST /api/customer/team/invite` creates a hashed, expiring invitation.
+  - `POST /api/auth/invitations/accept` atomically creates the invited user,
+    assigns the stored tenant role, and consumes the invitation.
+  - `PATCH /api/customer/team/:userId` updates a team member and can change only
+    `ADMIN`, `MANAGER`, or `STAFF`.
+  - `PATCH /api/customer/team/:userId/status` suspends or reactivates a member.
+  - `DELETE /api/customer/team/:userId` safely suspends a member rather than
+    physically deleting historical user data.
+
+  Team management requires the tenant-scoped `team.manage` permission. OWNER and
+  ADMIN receive it through the seed; internal Vertex roles and the tenant OWNER
+  cannot be assigned or modified through invitations/team operations. Invitation
+  tokens are stored only as hashes and are single-use and expiring. Email
+  delivery is provider-ready through `InvitationProvider`; development delivery
+  is intentionally a no-op.
+
 In development, registration returns a `developmentVerificationToken` so the
 flow can be tested without a third-party provider. Production delivery is
 represented by the `VerificationProvider` abstraction and must be replaced by

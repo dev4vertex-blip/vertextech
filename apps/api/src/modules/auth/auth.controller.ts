@@ -9,6 +9,7 @@ import {
   RefreshTokenDto,
   RegisterDto,
   VerifyEmailDto,
+  AcceptInvitationDto,
 } from "./dto.js";
 
 @Controller("auth")
@@ -28,6 +29,11 @@ export class AuthController {
   @Post("verify-email")
   verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.auth.verifyEmail(dto.token);
+  }
+
+  @Post("invitations/accept")
+  acceptInvitation(@Body() dto: AcceptInvitationDto) {
+    return this.auth.acceptInvitation(dto.token, dto.password);
   }
 
   @Post("refresh")

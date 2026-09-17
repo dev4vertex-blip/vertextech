@@ -84,3 +84,55 @@ export class UpdateSettingsDto {
   @IsOptional()
   businessSettings?: Record<string, string | number | boolean>;
 }
+
+export class InviteTeamMemberDto {
+  @IsEmail()
+  email!: string;
+  @IsString()
+  @MaxLength(80)
+  firstName!: string;
+  @IsString()
+  @MaxLength(80)
+  lastName!: string;
+  @IsString()
+  @Matches(/^(ADMIN|MANAGER|STAFF)$/)
+  role!: "ADMIN" | "MANAGER" | "STAFF";
+}
+
+export class UpdateTeamMemberDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  firstName?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  lastName?: string;
+  @IsOptional()
+  @Matches(/^(ADMIN|MANAGER|STAFF)$/)
+  role?: "ADMIN" | "MANAGER" | "STAFF";
+}
+
+export class UpdateTeamMemberStatusDto {
+  @Matches(/^(ACTIVE|SUSPENDED)$/)
+  status!: "ACTIVE" | "SUSPENDED";
+}
+
+export class TeamListQueryDto {
+  @IsOptional()
+  @Matches(/^(ACTIVE|INVITED|SUSPENDED|ARCHIVED)$/)
+  status?: "ACTIVE" | "INVITED" | "SUSPENDED" | "ARCHIVED";
+  @IsOptional()
+  @Matches(/^(OWNER|ADMIN|MANAGER|STAFF)$/)
+  role?: "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  search?: string;
+  @IsOptional()
+  @Matches(/^[1-9]\d*$/)
+  page?: string;
+  @IsOptional()
+  @Matches(/^[1-9]\d*$/)
+  pageSize?: string;
+}

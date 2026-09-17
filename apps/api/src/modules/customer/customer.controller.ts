@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Patch, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 
 import { AuthGuard } from "../authorization/auth.guard.js";
 import { AuthenticatedRequest } from "../authorization/authorization.types.js";
@@ -7,10 +18,20 @@ import { PermissionGuard } from "../authorization/permission.guard.js";
 import { Permissions } from "../authorization/decorators.js";
 import { CustomerService } from "./customer.service.js";
 import { UpdateBusinessDto, UpdateSettingsDto } from "./dto.js";
+import {
+  InviteTeamMemberDto,
+  TeamListQueryDto,
+  UpdateTeamMemberDto,
+  UpdateTeamMemberStatusDto,
+} from "./dto.js";
+import { TeamService } from "./team.service.js";
 
 @Controller("customer")
 export class CustomerController {
-  constructor(private readonly customer: CustomerService) {}
+  constructor(
+    private readonly customer: CustomerService,
+    private readonly team: TeamService,
+  ) {}
 
   @Get("profile")
   @UseGuards(AuthGuard, TenantContextGuard)
@@ -64,5 +85,67 @@ export class CustomerController {
   @Permissions("team.summary.read")
   teamSummary(@Req() request: AuthenticatedRequest) {
     return this.customer.teamSummary(request.tenantId!);
+  }
+
+  @Get("team")
+  @UseGuards(AuthGuard, TenantContextGuard, PermissionGuard)
+  @Permissions("users.read")
+  teamList(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: TeamListQueryDto,
+  ) {
+    return this.team.list(request.tenantId!, query);
+  }
+
+  @Get("team/:userId")
+  @UseGuards(AuthGuard, TenantContextGuard, PermissionGuard)
+  @Permissions("users.read")
+  teamMember(
+    @Req() request: AuthenticatedRequest,
+    @Param("userId") userId: string,
+  ) {
+    return this.team.member(request.tenantId!, userId);
+  }
+
+  @Post("team/invite")
+  @UseGuards(AuthGuard, TenantContextGuard, PermissionGuard)
+  @Permissions("team.manage")
+  invite(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: InviteTeamMemberDto,
+  ) {
+    return this.team.invite(request.tenantId!, request.user!.id, dto);
+  }
+
+  @Patch("team/:userId")
+  @UseGuards(AuthGuard, TenantContextGuard, PermissionGuard)
+  @Permissions("team.manage")
+  updateMember(
+    @Req() request: AuthenticatedRequest,
+    @Param("userId") userId: string,
+    @Body() dto: UpdateTeamMemberDto,
+  ) {
+    return this.team.update(request.tenantId!, userId, dto);
+  }
+
+  @Patch("team/:userId/status")
+  @UseGuards(AuthGuard, TenantContextGuard, PermissionGuard)
+  @Permissions("team.manage")
+  updateMemberStatus(
+    @Req() request: AuthenticatedRequest,
+    @Param("userId") userId: string,
+    @Body() dto: UpdateTeamMemberStatusDto,
+  ) {
+    return this.team.updateStatus(request.tenantId!, userId, dto.status);
+  }
+
+  @Delete("team/:userId")
+  @UseGuards(AuthGuard, TenantContextGuard, PermissionGuard)
+  @Permissions("team.manage")
+  removeMember(
+    @Req() request: AuthenticatedRequest,
+    @Param("userId") userId: string,
+  ) {
+    return this.team.remove(request.tenantId!, userId);
   }
 }
